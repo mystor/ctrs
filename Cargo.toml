@@ -1,0 +1,13 @@
+[package]
+name = "ctrs"
+version = "0.1.0"
+authors = ["Nika Layzell <nika@thelayzells.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+tempdir = "0.3"
+watt = "0.1"
+base64 = "0.10"

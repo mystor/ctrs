@@ -1,0 +1,36 @@
+[package]
+name = "ctrs-wasm"
+version = "0.1.0"
+authors = ["Nika Layzell <nika@thelayzells.com>"]
+edition = "2018"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies.quote]
+version = "1.0"
+default-features = false
+
+[dependencies.syn]
+version = "1.0"
+# Enable all features except `proc-macro`.
+default-features = false
+features = [
+  "derive",
+  "full",
+  "parsing",
+  "printing",
+  "visit",
+  "visit-mut",
+  "fold",
+  "clone-impls",
+  "extra-traits",
+]
+
+[dependencies.proc-macro2]
+version = "1.0"
+default-features = false
+
+[patch.crates-io]
+proc-macro2 = { git = "https://github.com/dtolnay/watt" }
