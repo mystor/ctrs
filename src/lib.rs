@@ -5,6 +5,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::iter;
 use std::process::{Command, Stdio};
+use std::env;
 use tempdir::TempDir;
 
 // Crates provided as part of the runtime
@@ -89,12 +90,28 @@ fn build_code(name: &str, source: &str) -> io::Result<Vec<u8>> {
     Ok(fs::read(&wasm_path)?)
 }
 
+fn log_stream(ts: &TokenStream) -> String {
+    let in_str = ts.to_string();
+    if in_str.len() > 1000 {
+        let pre = in_str.chars().take(400).collect::<String>();
+        let post = in_str.chars().rev().take(400).collect::<String>().chars().rev().collect::<String>();
+        format!("{} [.. {} chars ..] {}", pre, in_str.len() - 800, post)
+    } else {
+        in_str
+    }
+}
+
 #[proc_macro]
 pub fn ctrs(ts: TokenStream) -> TokenStream {
+    let ctrs_log = !env::var("CTRS_LOG").unwrap_or_default().is_empty();
+    if ctrs_log {
+        println!("ctrs!({})", log_stream(&ts));
+    }
+
     // Check if we're dealing with an internal message.
     let mut iter = ts.clone().into_iter();
     let first_id = iter.next().map(|id| id.to_string()).unwrap_or_default();
-    match &first_id[..] {
+    let os = match &first_id[..] {
         // ctrs!(__build_wasm__ $krate {..src..} ...) => build_result($krate "b64" ...)
         "__build_wasm__" => {
             let krate = iter.next().expect("missing crate name");
@@ -113,21 +130,27 @@ pub fn ctrs(ts: TokenStream) -> TokenStream {
             mac_args.extend(iter::once(krate));
             mac_args.extend(wasm_lit);
             mac_args.extend(iter);
+
             watt::proc_macro("build_result", mac_args, IMPL_WA)
         }
 
         // ctrs!(__eval_wasm__ $mname "b64str" ...) => result of calling method
         "__eval_wasm__" => {
-            let func = iter.next().expect("missing func name");
+            let func = iter.next().expect("missing func name").to_string();
             let wasm_lit = iter.next().expect("missing wasm src").to_string();
 
             assert!(wasm_lit.starts_with('"') && wasm_lit.ends_with('"'));
             let wasm = base64::decode(&wasm_lit[1..wasm_lit.len() - 2]).unwrap();
 
-            watt::proc_macro(&func.to_string(), iter.collect(), &wasm)
+            watt::proc_macro(&func, iter.collect(), &wasm)
         }
 
         // Not an internal method! Hand over.
         _ => watt::proc_macro("ctrs", ts, IMPL_WA),
+    };
+
+    if ctrs_log {
+        println!("  => {}", log_stream(&os));
     }
+    os
 }
