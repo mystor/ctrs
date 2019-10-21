@@ -9,5 +9,5 @@ proc-macro = true
 
 [dependencies]
 tempdir = "0.3"
-watt = "0.1"
 base64 = "0.10"
+watt = { git = "https://github.com/mystor/watt", branch = "wasm_string" }
