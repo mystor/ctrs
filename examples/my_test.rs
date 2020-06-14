@@ -1,17 +1,20 @@
-use ctrs::ctrs;
-
-ctrs! {
-    macro crate my_test_crate;
-    use proc_macro2::TokenStream;
+::inline_proc_macros::compile! {
+    use ::proc_macro::TokenStream;
     use syn::*;
-    use quote::quote;
+    use ::quote::{quote, ToTokens};
 
-    #[proc_macro]
-    pub fn my_proc_macro(ts: TokenStream) -> TokenStream {
-        let fname = parse2::<ItemFn>(ts).unwrap();
-        let comment = format!("Got a func! {:?}", fname);
+    #[proc_macro] pub
+    fn my_proc_macro (ts: TokenStream)
+      -> TokenStream
+    {
+        let fname = parse_macro_input!(ts as ItemFn);
+        let comment = format!(
+            "Got a func! {:?}",
+            fname.into_token_stream().to_string(),
+        );
         quote! {
-            fn main() {
+            fn main ()
+            {
                 println!("{}", #comment);
             }
         }

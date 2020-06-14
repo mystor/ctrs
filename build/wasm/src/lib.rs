@@ -1,12 +1,18 @@
 //! Internal implementation crate for `ctrs`
 
-#![deny(warnings)]
-
-use proc_macro2::{TokenStream, TokenTree};
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
-use syn::*;
-use quote::quote;
+use ::proc_macro2::{
+    TokenStream,
+    TokenTree,
+};
+use ::quote::{
+    quote,
+    quote_spanned,
+    ToTokens,
+};
+use ::syn::{*,
+    parse::{Parse, Parser, ParseStream},
+    punctuated::Punctuated,
+};
 
 struct BuildResult {
     _name: Ident,
@@ -24,9 +30,11 @@ impl Parse for BuildResult {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn build_result(input: TokenStream) -> TokenStream {
-    proc_macro2::set_wasm_panic_hook();
+// #[no_mangle]
+pub(in crate)
+// extern "C"
+fn build_result(input: TokenStream) -> TokenStream {
+    // proc_macro2::set_wasm_panic_hook();
 
     let input = syn::parse2::<BuildResult>(input).unwrap();
 
@@ -66,9 +74,11 @@ impl Parse for CtrsInput {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn ctrs(input: TokenStream) -> TokenStream {
-    proc_macro2::set_wasm_panic_hook();
+// #[no_mangle]
+pub(in crate)
+// extern "C"
+fn ctrs(input: TokenStream) -> TokenStream {
+    // proc_macro2::set_wasm_panic_hook();
 
     let mut input = syn::parse2::<CtrsInput>(input).unwrap();
 
@@ -88,7 +98,7 @@ pub extern "C" fn ctrs(input: TokenStream) -> TokenStream {
                     // Transform the method into a wasm export.
                     func.attrs.push(parse_quote!(#[no_mangle]));
                     func.sig.abi = Some(parse_quote!(extern "C"));
-                    func.block.stmts.insert(0, parse_quote!(::proc_macro2::set_wasm_panic_hook();));
+                    // func.block.stmts.insert(0, parse_quote!(::proc_macro2::set_wasm_panic_hook();));
                     func.vis = parse_quote!(pub);
                 }
             }
