@@ -8,10 +8,10 @@ authors = ["Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-base64 = "0.12.3"
 tempdir = "=0.3.6"
+
 watt = { git = "https://github.com/mystor/watt", branch = "wasm_string" }
 
-proc-macro2 = { version = "1.0.*", features = ["span-locations"] }
+proc-macro2 = "1.0.*"
 quote = "1.0.*"
 syn = { version = "1.0.*", features = ["full"] }

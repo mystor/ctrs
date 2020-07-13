@@ -9,11 +9,4 @@ edition = "2018"
 [dependencies]
 inline_proc_macros = { path = ".." }
 
-[build-dependencies]
-inline_proc_macros-build = { path = "../build" }
-
-[package.metadata.inline_proc_macros]
-in = "src/proc_macros.rs"
-out = "$OUT_DIR/proc_macros.rs"
-
 [workspace]

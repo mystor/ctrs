@@ -1,10 +1,7 @@
-#![allow(unused_imports)]
-
 use ::std::{
     env,
     fs,
     io::{self, Write},
-    iter,
     process::{Command, Stdio},
     ops::Not as _,
 };
@@ -12,85 +9,99 @@ use ::std::{
 use ::proc_macro2::{
     Span,
     TokenStream as TokenStream2,
-    TokenTree as TT,
 };
 use ::quote::{
     quote,
     quote_spanned,
-    ToTokens,
 };
 use ::syn::{*,
-    parse::{Parse, Parser, ParseStream},
-    punctuated::Punctuated,
     spanned::Spanned,
 };
 use ::tempdir::{
     TempDir,
 };
 
-macro_rules! renv {($name:expr) => (
-    &::std::env::var($name)
-        .expect(stringify!($name))
-)}
-
 type Result<Ok, Err = ::syn::Error> = ::core::result::Result<Ok, Err>;
+
+fn ignore<T, E> (_: Result<T, E>)
+{}
+
+fn sip_hash (it: &'_ (impl ::core::hash::Hash + ?Sized))
+ -> u64
+{
+    #[allow(deprecated)]
+    let ref mut hasher = ::core::hash::SipHasher::new();
+    it.hash(hasher);
+    ::core::hash::Hasher::finish(hasher)
+}
 
 /// Invoke rustc to build a `wasm32-unknown-unknown` crate with dependencies on
 /// `unicode_xid`, `proc_macro2`, `syn`, and `quote`.
-fn build_code (source: &'_ str)
-  -> io::Result<Vec<u8>>
+fn compile_to_wasm (source: &'_ str)
+  -> io::Result<String>
 {
-    // Build within a tempdir
-    let tmp = TempDir::new("inline_proc_macros_tempdir")?;
     define_strings! {
+        const WASM_TARGET = "wasm32-unknown-unknown";
         const CRATE_NAME = "inline_proc_macros";
     }
-    let wasm_path = tmp.path().join(concat!(CRATE_NAME!(), ".wasm"));
+    ignore(rustup_ensure_has_target(WASM_TARGET));
+    // Build within a tempdir
+    let tmp = TempDir::new("inline_proc_macros_tempdir")?;
+    let tmp_path =
+        tmp .path()
+            .to_str()
+            .expect("`TempDir` generated a non-UTF-8 path")
+    ;
+    let file_id = format!("{:016x}", sip_hash(source));
+    let ref wasm_path = format!(
+        COMPILED_WASM_PATH_TEMPLATE!(),
+        out_dir = renv!("OUT_DIR"),
+        file_id = file_id,
+    );
     let mut cmd = Command::new(renv!("RUSTC"));
     cmd.args(&[
         "-", // input source code is piped
-        "-o", wasm_path.to_str().unwrap(),
-        "--target", "wasm32-unknown-unknown",
+        "-o", wasm_path,
+        "--target", WASM_TARGET,
         "--edition", "2018",
         "--crate-type", "cdylib",
         "--crate-name", CRATE_NAME,
-        "-L", &format!("dependency={}", tmp.path().to_str().unwrap()),
+        "-L", &["dependency=", tmp_path].concat(),
+        "--color=always",
     ]);
-    macro_rules! rlibs {
-        () => (rlibs! {
-            proc_macro2, quote, syn, unicode_xid,
-        });
-
-        (
-            $($lib:ident),* $(,)?
-        ) => ({
-            struct Paths {
-                $(
-                    $lib: String,
-                )*
-            }
-            let paths = Paths {
-                $(
-                    $lib:
-                        tmp .path()
-                            .join(concat!("lib", stringify!($lib), ".rlib"))
-                            .to_string_lossy()
-                            .into_owned()
-                    ,
-                )*
-            };
+    macro_rules! rlibs {(
+        $($lib:ident),* $(,)?
+    ) => ({
+        struct Paths {
             $(
-                fs::write(&paths.$lib, &include_bytes! {
-                    concat!(
-                        env!("OUT_DIR"), "/wasm32-unknown-unknown/release/",
-                        "lib", stringify!($lib), ".rlib",
-                    )
-                }[..])?;
-                cmd.arg("--extern");
-                cmd.arg(&format!(concat!(stringify!($lib), "={}"), paths.$lib));
+                $lib: String,
             )*
-        });
-    } rlibs! {}
+        }
+        let paths = Paths {
+            $(
+                $lib:
+                    tmp .path()
+                        .join(concat!("lib", stringify!($lib), ".rlib"))
+                        .to_string_lossy()
+                        .into_owned()
+                ,
+            )*
+        };
+        $(
+            fs::write(&paths.$lib, &include_bytes! {
+                concat!(
+                    env!("OUT_DIR"),
+                    "/wasm32-unknown-unknown/release/",
+                    "lib", stringify!($lib), ".rlib",
+                )
+            }[..])?;
+            cmd.arg("--extern");
+            cmd.arg([stringify!($lib), "=", &paths.$lib].concat());
+        )*
+    })}
+    rlibs! {
+        proc_macro2, quote, syn, unicode_xid,
+    }
 
     // Spawn the compiler
     let mut child = cmd.stdin(Stdio::piped()).spawn()?;
@@ -122,64 +133,66 @@ fn build_code (source: &'_ str)
     // Wait for the compiler to succeed.
     let status = child.wait()?;
     if status.success() {
-        // Read in the resulting wasm file
-        Ok(fs::read(&wasm_path)?)
+        Ok(file_id)
     } else {
         Err(io::Error::new(
             io::ErrorKind::Other,
-            format!("rustc exited with status {}", status),
+            format!("{:?} exited with status {}", cmd, status),
         ))
     }
 }
 
-fn log_stream (ts: &TokenStream2)
-{
-    let in_str = ts.to_string();
-    if in_str.len() > 1000 {
-        let pre = in_str.chars().take(400).collect::<String>();
-        let post = in_str.chars().rev().take(400).collect::<String>().chars().rev().collect::<String>();
-        println!("{} [.. {} chars ..] {}", pre, in_str.len() - 800, post)
-    } else {
-        println!("{}", in_str);
-    }
-}
-
 pub(in crate)
-fn compile (input: TokenStream2)
-  -> Result<TokenStream2>
+fn compile (
+    mod_name: &'_ Ident,
+    input: TokenStream2,
+) -> Result<TokenStream2>
 {Ok({
     let debug = env::var("DEBUG_INLINE_MACROS").ok().map_or(false, |s| s == "1");
     if debug {
         println!("<<<\ncompile! {{");
-        log_stream(&input);
-        println!("}}\n>>>");
+        crate::utils::log_stream(input.to_string());
+        println!("}}\n=== yields ===");
     }
-    let (items, macro_names) = extract_macro_names(input.into())?;
-    let ref src = quote!( #(#items)* ).to_string();
-    let compiled_wasm =
-        build_code(src)
-            .expect("error building crate")
+    let mut file = ::syn::parse2(input)?;
+    let macro_names_and_attrs = extract_macro_names_and_attrs(&mut file)?;
+    let ref src = quote!( #file ).to_string();
+    let ref file_id =
+        compile_to_wasm(src)
+            .map_err(|err| {
+                if debug {
+                    eprintln!("{}", err);
+                }
+                ::syn::Error::new(Span::call_site(),
+                    "Compilation of the procedural macro failed",
+                )
+            })?
     ;
-    let b64_compiled_wasm = ::base64::encode(&compiled_wasm).to_string();
-    let ret = build_result(parse_quote!(#b64_compiled_wasm), macro_names);
-    if debug { log_stream(&ret); }
+    let ret = macro_defs(mod_name, file_id, macro_names_and_attrs);
+    if debug {
+        crate::utils::log_stream(ret.to_string());
+        println!(">>>\n");
+    }
     ret
 })}
 
-fn build_result (
-    wasm_code: LitStr,
-    macros: Vec<Ident>,
+fn macro_defs (
+    mod_name: &'_ Ident,
+    file_id: &'_ str,
+    macro_names_and_attrs: Vec<(Ident, Vec<Attribute>)>,
 ) -> TokenStream2
 {
     let mut ret = TokenStream2::new();
-    macros.into_iter().for_each(|macro_name| {
-        ret.extend(quote_spanned! { macro_name.span()=>
-            macro_rules! #macro_name {(
+    macro_names_and_attrs.into_iter().for_each(|(name, attrs)| {
+        ret.extend(quote_spanned! { name.span()=>
+            #(#attrs)*
+            macro_rules! #name {(
                 $($proc_macro_input:tt)*
             ) => (
-                ::inline_proc_macros::__eval_wasm__! {
-                    #macro_name
-                    #wasm_code
+                // Defined in `eval.rs`
+                $crate::#mod_name::__inline_proc_macros__eval_wasm__! {
+                    #name
+                    #file_id
                     $($proc_macro_input)*
                 }
             )}
@@ -188,18 +201,11 @@ fn build_result (
     ret.into()
 }
 
-fn extract_macro_names (ts: TokenStream2)
-  -> Result<(Vec<Item>, Vec<Ident>)>
+fn extract_macro_names_and_attrs (file: &'_ mut ::syn::File)
+  -> Result<Vec<(Ident, Vec<Attribute>)>>
 {Ok({
-    let mut items: Vec<Item> = Parser::parse2(|parse_stream: ParseStream<'_> | {
-        let mut ret = vec![];
-        while parse_stream.is_empty().not() {
-            ret.push(parse_stream.parse()?);
-        }
-        Ok(ret)
-    }, ts)?;
-    let mut macro_names = Vec::with_capacity(items.len());
-    items.iter_mut().try_for_each(|item| Ok(match item {
+    let mut macro_names_and_attrs = Vec::with_capacity(file.items.len());
+    file.items.iter_mut().try_for_each(|item| Ok(match item {
         | &mut Item::Fn(ref mut func) => {
             if {
                 // Check for the `proc_macro` attribute, and remove it.
@@ -228,7 +234,10 @@ fn extract_macro_names (ts: TokenStream2)
                     "`#[proc_macro]` function cannot have an `extern` annotation",
                 ));
             }
-            macro_names.push(f_name.to_owned());
+            macro_names_and_attrs.push((
+                f_name.to_owned(),
+                ::core::mem::take(&mut func.attrs),
+            ));
             // Transform the method into a wasm export.
             func.attrs.push(parse_quote!(#[no_mangle]));
             func.vis = parse_quote!(pub);
@@ -239,5 +248,31 @@ fn extract_macro_names (ts: TokenStream2)
         },
         | _ => {},
     }))?;
-    (items, macro_names)
+    macro_names_and_attrs
+})}
+
+fn rustup_ensure_has_target (target: &'_ str)
+  -> Result<(), Box<dyn ::std::error::Error>>
+{Ok({
+    let rustup = env::var("RUSTUP").ok();
+    let rustup = rustup.as_deref().unwrap_or("rustup");
+    let rustup = |args| {
+        let mut cmd = Command::new(rustup);
+        cmd.args(args);
+        cmd
+    };
+    if  String::from_utf8(
+            rustup(&["target", "list", "--installed"])
+                .output()?
+                .stdout
+        )?
+        .lines()
+        .any(|s| s.trim() == target)
+    {
+        return Ok(())
+    }
+    let mut add_wasm_cmd = rustup(&["target", "add", target]);
+    if let Err(err) = add_wasm_cmd.status() {
+        eprintln!("Warning: command {:?} failed: {}", add_wasm_cmd, err);
+    }
 })}
