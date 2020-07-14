@@ -13,12 +13,6 @@ macro_rules! define_strings {(
     )*
 )}
 
-define_strings! {
-    const COMPILED_WASM_PATH_TEMPLATE =
-        "{out_dir}/inline_proc_macro_{file_id}.wasm"
-    ;
-}
-
 macro_rules! renv {($name:expr) => (
     &::std::env::var($name)
         .expect(stringify!($name))

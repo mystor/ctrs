@@ -29,12 +29,7 @@ fn eval_wasm (input: TokenStream)
             .to_string()
     ;
     assert!(wasm_lit.starts_with('"') && wasm_lit.ends_with('"'));
-    let file_id = &wasm_lit[1 .. wasm_lit.len() - 1];
-    let ref compiled_wasm_path = format!(
-        COMPILED_WASM_PATH_TEMPLATE!(),
-        out_dir = renv!("OUT_DIR"),
-        file_id = debug!(file_id),
-    );
+    let compiled_wasm_path = &wasm_lit[1 .. wasm_lit.len() - 1];
     let ref wasm =
         ::std::fs::read(debug!(compiled_wasm_path))
             .unwrap_or_else(|err| panic!(

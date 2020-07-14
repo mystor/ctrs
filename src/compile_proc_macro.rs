@@ -52,16 +52,15 @@ fn compile_to_wasm (source: &'_ str)
             .to_str()
             .expect("`TempDir` generated a non-UTF-8 path")
     ;
-    let file_id = format!("{:016x}", sip_hash(source));
-    let ref wasm_path = format!(
-        COMPILED_WASM_PATH_TEMPLATE!(),
+    let wasm_path = format!(
+        "{out_dir}/inline_proc_macro_{hash:016x}.wasm",
         out_dir = renv!("OUT_DIR"),
-        file_id = file_id,
+        hash = sip_hash(source),
     );
     let mut cmd = Command::new(renv!("RUSTC"));
     cmd.args(&[
         "-", // input source code is piped
-        "-o", wasm_path,
+        "-o", &wasm_path,
         "--target", WASM_TARGET,
         "--edition", "2018",
         "--crate-type", "cdylib",
@@ -133,7 +132,7 @@ fn compile_to_wasm (source: &'_ str)
     // Wait for the compiler to succeed.
     let status = child.wait()?;
     if status.success() {
-        Ok(file_id)
+        Ok(wasm_path)
     } else {
         Err(io::Error::new(
             io::ErrorKind::Other,
@@ -157,7 +156,7 @@ fn compile (
     let mut file = ::syn::parse2(input)?;
     let macro_names_and_attrs = extract_macro_names_and_attrs(&mut file)?;
     let ref src = quote!( #file ).to_string();
-    let ref file_id =
+    let ref wasm_path =
         compile_to_wasm(src)
             .map_err(|err| {
                 if debug {
@@ -168,7 +167,7 @@ fn compile (
                 )
             })?
     ;
-    let ret = macro_defs(mod_name, file_id, macro_names_and_attrs);
+    let ret = macro_defs(mod_name, wasm_path, macro_names_and_attrs);
     if debug {
         crate::utils::log_stream(ret.to_string());
         println!(">>>\n");
@@ -178,7 +177,7 @@ fn compile (
 
 fn macro_defs (
     mod_name: &'_ Ident,
-    file_id: &'_ str,
+    wasm_path: &'_ str,
     macro_names_and_attrs: Vec<(Ident, Vec<Attribute>)>,
 ) -> TokenStream2
 {
@@ -192,7 +191,7 @@ fn macro_defs (
                 // Defined in `eval.rs`
                 $crate::#mod_name::__inline_proc_macros__eval_wasm__! {
                     #name
-                    #file_id
+                    #wasm_path
                     $($proc_macro_input)*
                 }
             )}
