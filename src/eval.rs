@@ -4,13 +4,7 @@ pub(in crate)
 fn eval_wasm (input: TokenStream)
   -> TokenStream
 {
-    let debug =
-        ::std::env::var("DEBUG_INLINE_MACROS")
-            .ok()
-            .map_or(false, |s| s == "1")
-    ;
-    mk_debug!(if debug);
-    if debug {
+    #[cfg(feature = "trace-macros")] {
         println!("<<<__eval_wasm__! {{");
         crate::utils::log_stream(input.to_string());
         println!("}}\n>>>");
@@ -39,11 +33,11 @@ fn eval_wasm (input: TokenStream)
             ))
     ;
     let input: TokenStream = tokens.collect();
-    if debug {
+    #[cfg(feature = "trace-macros")] {
         println!("\n<<<\n{}! {{ {} }}\n=== yields ===\n", func, input.to_string());
     }
-    let expanded = ::watt::proc_macro(&func, input.into(), wasm);
-    if debug {
+    let expanded = ::watt::WasmMacro::new(wasm).proc_macro(&func, input.into());
+    #[cfg(feature = "trace-macros")] {
         println!("\n{}\n\n>>>", expanded.to_string());
     }
     expanded

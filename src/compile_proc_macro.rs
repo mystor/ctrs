@@ -23,28 +23,28 @@ use ::tempdir::{
 
 type Result<Ok, Err = ::syn::Error> = ::core::result::Result<Ok, Err>;
 
-fn ignore<T, E> (_: Result<T, E>)
-{}
-
-fn sip_hash (it: &'_ (impl ::core::hash::Hash + ?Sized))
- -> u64
-{
-    #[allow(deprecated)]
-    let ref mut hasher = ::core::hash::SipHasher::new();
-    it.hash(hasher);
-    ::core::hash::Hasher::finish(hasher)
+trait ResultIgnored : Sized {
+    #[inline]
+    fn ignored (self: Self)
+    {
+        impl<T, E> ResultIgnored
+            for Result<T, E>
+        {}
+    }
 }
 
 /// Invoke rustc to build a `wasm32-unknown-unknown` crate with dependencies on
 /// `unicode_xid`, `proc_macro2`, `syn`, and `quote`.
-fn compile_to_wasm (source: &'_ str)
-  -> io::Result<String>
+fn compile_to_wasm (
+    mod_name: &'_ ::syn::Ident,
+    source: &'_ str,
+) -> io::Result<String>
 {
     define_strings! {
         const WASM_TARGET = "wasm32-unknown-unknown";
         const CRATE_NAME = "inline_proc_macros";
     }
-    ignore(rustup_ensure_has_target(WASM_TARGET));
+    rustup_ensure_has_target(WASM_TARGET).ignored();
     // Build within a tempdir
     let tmp = TempDir::new("inline_proc_macros_tempdir")?;
     let tmp_path =
@@ -52,11 +52,9 @@ fn compile_to_wasm (source: &'_ str)
             .to_str()
             .expect("`TempDir` generated a non-UTF-8 path")
     ;
-    let wasm_path = format!(
-        "{out_dir}/inline_proc_macro_{hash:016x}.wasm",
-        out_dir = renv!("OUT_DIR"),
-        hash = sip_hash(source),
-    );
+    let ref out_dir = [renv!("OUT_DIR"), "inline_proc_macros"].join("/");
+    ::std::fs::create_dir_all(out_dir).ignored();
+    let wasm_path = format!("{}/{}.wasm", out_dir, mod_name);
     let mut cmd = Command::new(renv!("RUSTC"));
     cmd.args(&[
         "-", // input source code is piped
@@ -65,7 +63,7 @@ fn compile_to_wasm (source: &'_ str)
         "--edition", "2018",
         "--crate-type", "cdylib",
         "--crate-name", CRATE_NAME,
-        "-L", &["dependency=", tmp_path].concat(),
+        "-L", &["dependency", tmp_path].join("="),
         "--color=always",
     ]);
     macro_rules! rlibs {(
@@ -95,7 +93,7 @@ fn compile_to_wasm (source: &'_ str)
                 )
             }[..])?;
             cmd.arg("--extern");
-            cmd.arg([stringify!($lib), "=", &paths.$lib].concat());
+            cmd.arg([stringify!($lib), &paths.$lib].join("="));
         )*
     })}
     rlibs! {
@@ -117,14 +115,14 @@ fn compile_to_wasm (source: &'_ str)
                 ) => (
                     match ::syn::parse2::<$T>($expr) {
                         | Ok(it) => it,
-                        | Err(err) => return err.to_compile_error().into(),
+                        | Err(err) => return err.to_compile_error()/*.into()*/,
                     }
                 );
 
                 (
                     $expr:expr
                 ) => (
-                    parse_macro_input!($expr as _)
+                    crate::parse_macro_input!($expr as _)
                 );
             }
         ).as_bytes())?;
@@ -147,8 +145,7 @@ fn compile (
     input: TokenStream2,
 ) -> Result<TokenStream2>
 {Ok({
-    let debug = env::var("DEBUG_INLINE_MACROS").ok().map_or(false, |s| s == "1");
-    if debug {
+    #[cfg(feature = "trace-macros")] {
         println!("<<<\ncompile! {{");
         crate::utils::log_stream(input.to_string());
         println!("}}\n=== yields ===");
@@ -157,9 +154,9 @@ fn compile (
     let macro_names_and_attrs = extract_macro_names_and_attrs(&mut file)?;
     let ref src = quote!( #file ).to_string();
     let ref wasm_path =
-        compile_to_wasm(src)
+        compile_to_wasm(mod_name, src)
             .map_err(|err| {
-                if debug {
+                if cfg!(feature = "trace-macros") {
                     eprintln!("{}", err);
                 }
                 ::syn::Error::new(Span::call_site(),
@@ -168,7 +165,7 @@ fn compile (
             })?
     ;
     let ret = macro_defs(mod_name, wasm_path, macro_names_and_attrs);
-    if debug {
+    #[cfg(feature = "trace-macros")] {
         crate::utils::log_stream(ret.to_string());
         println!(">>>\n");
     }

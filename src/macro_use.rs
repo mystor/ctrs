@@ -6,15 +6,13 @@ fn generate (
 ) -> ::syn::Result<::proc_macro::TokenStream>
 {Ok({
     let syn = crate::error::IoErrorExt::into_syn;
-    let debug =
-        ::std::env::var("DEBUG_INLINE_MACROS")
-            .ok()
-            .map_or(false, |s| s == "1")
-    ;
-    mk_debug!(if debug);
     let ref in_file = format!("src/{}.rs", mod_name);
     debug!(in_file);
-    let ref out_file = format!("{}/{}.rs", renv!("OUT_DIR"), mod_name);
+    let ref out_file = format!(
+        "{OUT_DIR}/inline_proc_macros/{mod_name}.rs",
+        OUT_DIR = renv!("OUT_DIR"),
+        mod_name = mod_name,
+    );
     debug!(out_file);
     if debug!(already_up_to_date(in_file, out_file)).not() {
         let ref input = ::std::fs::read_to_string(in_file).map_err(syn)?;
@@ -35,7 +33,11 @@ fn generate (
         #[doc(hidden)] pub
         mod #mod_name {
             // The actual expansion
-            include!(concat!(env!("OUT_DIR"), "/", stringify!(#mod_name), ".rs"));
+            include!(concat!(
+                env!("OUT_DIR"),
+                "/inline_proc_macros/",
+                stringify!(#mod_name), ".rs",
+            ));
             // For #[macro_export] to work, `eval_wasm` needs to be exported as
             // well. Perform the re-export here, to avoid name collisions with
             // other calls to `#[inline_proc::macro_use]`.
@@ -51,7 +53,7 @@ fn generate (
             );
         }
     };
-    if debug {
+    #[cfg(feature = "trace-macros")] {
         println!("\n#[inline_proc::macro_use] expands to:\n");
         crate::utils::log_stream(ret.to_string());
     }

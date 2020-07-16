@@ -1,9 +1,9 @@
 [source.crates-io]
 replace-with = "vendored-sources"
 
-[source."https://github.com/mystor/watt"]
-git = "https://github.com/mystor/watt"
-branch = "wasm_string"
+[source."https://github.com/danielhenrymantilla/watt"]
+git = "https://github.com/danielhenrymantilla/watt"
+branch = "non-static-wasm-runtime"
 replace-with = "vendored-sources"
 
 [source.vendored-sources]

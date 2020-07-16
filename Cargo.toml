@@ -14,8 +14,13 @@ edition = "2018"
 [dependencies]
 tempdir = "=0.3.6"
 
-watt = { git = "https://github.com/mystor/watt", branch = "wasm_string" }
-
 proc-macro2 = "1.0.*"
 quote = "1.0.*"
 syn = { version = "1.0.*", features = ["full"] }
+
+[dependencies.watt]
+git = "https://github.com/danielhenrymantilla/watt"
+branch = "non-static-wasm-runtime"
+
+[features]
+trace-macros = []

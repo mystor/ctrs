@@ -18,6 +18,7 @@ macro_rules! renv {($name:expr) => (
         .expect(stringify!($name))
 )}
 
+#[cfg(feature = "trace-macros")]
 pub(in crate)
 fn log_stream (ts: impl AsRef<str>)
 {
@@ -34,21 +35,21 @@ fn log_stream (ts: impl AsRef<str>)
     }
 }
 
-macro_rules! mk_debug {(if $debug:expr) => (
-    let debug: bool = $debug;
-    macro_rules! debug {($expr:expr) => (
-        match $expr { expr => {
-            if debug {
-                eprintln!(
-                    "[{}:{}:{}] {} = {:#?}",
-                    file!(),
-                    line!(),
-                    column!(),
-                    stringify!($expr),
-                    expr,
-                );
-            }
-            expr
-        }}
-    )}
+#[cfg(feature = "trace-macros")]
+macro_rules! debug { ($expr:expr) => (
+    match $expr { expr => {
+        eprintln!(
+            "[{}:{}:{}] {} = {:#?}",
+            file!(),
+            line!(),
+            column!(),
+            stringify!($expr),
+            expr,
+        );
+        expr
+    }}
+)}
+#[cfg(not(feature = "trace-macros"))]
+macro_rules! debug { ($expr:expr) => (
+    { $expr }
 )}

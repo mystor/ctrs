@@ -32,7 +32,8 @@ features = [
 version = "1.0"
 default-features = false
 
-[patch.crates-io]
-proc-macro2 = { git = "https://github.com/mystor/watt", branch = "wasm_string" }
+[patch.crates-io.proc-macro2]
+git = "https://github.com/danielhenrymantilla/watt"
+branch = "non-static-wasm-runtime"
 
 [workspace]
