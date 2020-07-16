@@ -238,9 +238,6 @@ fn extract_macro_names_and_attrs (file: &'_ mut ::syn::File)
             func.attrs.push(parse_quote!(#[no_mangle]));
             func.vis = parse_quote!(pub);
             func.sig.abi.replace(parse_quote!(extern "C"));
-            func.block.stmts.insert(0, parse_quote! {
-                ::proc_macro2::set_wasm_panic_hook();
-            });
         },
         | _ => {},
     }))?;

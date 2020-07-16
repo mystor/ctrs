@@ -1,15 +1,19 @@
 pub(in crate)
-trait IoErrorExt {
-    fn into_syn (self: Self)
-      -> ::syn::Error
+trait SynErrExt {
+    type Ok;
+    fn syn_err (self: Self)
+      -> Result<Self::Ok, ::syn::Error>
     ;
 }
-impl IoErrorExt
-    for ::std::io::Error
+impl<Ok> SynErrExt
+    for Result<Ok, ::std::io::Error>
 {
-    fn into_syn (self: Self)
-      -> ::syn::Error
+    type Ok = Ok;
+    fn syn_err (self: Self)
+      -> Result<Ok, ::syn::Error>
     {
-        ::syn::Error::new(::proc_macro2::Span::call_site(), self.to_string())
+        self.map_err(|err| {
+          ::syn::Error::new(::proc_macro2::Span::call_site(), err.to_string())
+        })
     }
 }

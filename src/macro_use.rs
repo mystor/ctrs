@@ -1,12 +1,16 @@
 use ::core::ops::Not as _;
+use crate::error::SynErrExt;
 
 pub(in crate)
 fn generate (
     mod_name: &'_ ::syn::Ident,
 ) -> ::syn::Result<::proc_macro::TokenStream>
 {Ok({
-    let syn = crate::error::IoErrorExt::into_syn;
-    let ref in_file = format!("src/{}.rs", mod_name);
+    let ref in_file = format!(
+        "{CARGO_MANIFEST_DIR}/src/{mod_name}.rs",
+        CARGO_MANIFEST_DIR = renv!("CARGO_MANIFEST_DIR"),
+        mod_name = mod_name,
+    );
     debug!(in_file);
     let ref out_file = format!(
         "{OUT_DIR}/inline_proc_macros/{mod_name}.rs",
@@ -15,7 +19,7 @@ fn generate (
     );
     debug!(out_file);
     if debug!(already_up_to_date(in_file, out_file)).not() {
-        let ref input = ::std::fs::read_to_string(in_file).map_err(syn)?;
+        let ref input = ::std::fs::read_to_string(in_file).syn_err()?;
         let input = if let Ok(it) = input.parse() { it } else {
             // If we are here it means the input file could not even be properly
             // tokenized. At that point, we stop our generation and instead just
@@ -26,7 +30,7 @@ fn generate (
             ).into());
         };
         let generated = crate::compile_proc_macro::compile(mod_name, input)?;
-        ::std::fs::write(out_file, generated.to_string().as_bytes()).map_err(syn)?;
+        ::std::fs::write(out_file, generated.to_string().as_bytes()).syn_err()?;
     }
     let ret = ::quote::quote! {
         #[macro_use]
@@ -40,7 +44,7 @@ fn generate (
             ));
             // For #[macro_export] to work, `eval_wasm` needs to be exported as
             // well. Perform the re-export here, to avoid name collisions with
-            // other calls to `#[inline_proc::macro_use]`.
+            // other calls to `#[inline_proc_macro::macro_use]`.
             #[doc(hidden)] pub
             use ::inline_proc_macros::__eval_wasm__
                 as __inline_proc_macros__eval_wasm__
@@ -54,8 +58,9 @@ fn generate (
         }
     };
     #[cfg(feature = "trace-macros")] {
-        println!("\n#[inline_proc::macro_use] expands to:\n");
+        println!("\n<<<\n#[inline_proc_macro::macro_use]\n=== yields ===");
         crate::utils::log_stream(ret.to_string());
+        println!("\n>>>\n");
     }
     ret.into()    
 })}

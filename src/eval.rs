@@ -5,9 +5,9 @@ fn eval_wasm (input: TokenStream)
   -> TokenStream
 {
     #[cfg(feature = "trace-macros")] {
-        println!("<<<__eval_wasm__! {{");
+        println!("\n__eval_wasm__! {{");
         crate::utils::log_stream(input.to_string());
-        println!("}}\n>>>");
+        println!("}}\n");
     }
     let mut tokens = TokenStream::into_iter(input.into());
     let func =
