@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  # == CHECK == #
+  check:
+    name: Check nightly stable and MSRV
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        rust:
+          - 1.43.0
+          - stable
+          - nightly
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Instal LLVM
+        run: choco install -y llvm
+        if: runner.os == 'Windows'
+
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features trace-macros
+
+  check-features:
+    name: Check all the features combinations on MSRV
+    runs-on: ubuntu-latest
+    needs: check
+    strategy:
+      matrix:
+        feature--trace-macros: ['', '--features trace-macros']
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.43.0
+          override: true
+
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: |
+            --no-default-features
+            ${{ matrix.feature--trace-macros }}
+
+  # == BUILD & TEST == #
+  build-and-test:
+    name: Build and test
+    runs-on: ${{ matrix.os }}
+    needs: [check, check-features]
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          override: true
+          toolchain: nightly
+
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Downstream crate run
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --manifest-path downstream/Cargo.toml
