@@ -1,5 +1,5 @@
 [package]
-name = "ctrs-wasm"
+name = "placeholder"
 version = "0.1.0"
 authors = ["Nika Layzell <nika@thelayzells.com>"]
 edition = "2018"
@@ -14,8 +14,8 @@ default-features = false
 
 [dependencies.syn]
 version = "1.0"
-# Enable all features except `proc-macro`.
 default-features = false
+# Enable all features except `proc-macro`.
 features = [
   "derive",
   "full",
@@ -25,8 +25,11 @@ features = [
   "visit-mut",
   "fold",
   "clone-impls",
-  "extra-traits",
+  # "extra-traits",
 ]
+
+[features]
+extra-traits = ["syn/extra-traits"]
 
 [dependencies.proc-macro2]
 version = "1.0"
@@ -36,4 +39,4 @@ default-features = false
 git = "https://github.com/danielhenrymantilla/watt"
 branch = "non-static-wasm-runtime"
 
-[workspace]
+[workspace]  # TODO: can this be avoided?
